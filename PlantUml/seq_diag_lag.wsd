@@ -1,0 +1,18 @@
+@startuml Seq_LabUpload
+actor LabUser
+participant LabUI
+participant LabController
+participant LabService
+participant LabDB
+participant NotificationService
+participant AuditLog
+
+LabUser -> LabUI: Upload new lab result (patient_id, test_name, result)
+LabUI -> LabController: POST /api/v1/patients/{id}/lab_results
+LabController -> LabService: createLabResult(...)
+LabService -> LabDB: INSERT lab_results ...
+LabService -> NotificationService: notify(patient, doctor)
+LabService -> AuditLog: record("lab_result_uploaded", details)
+LabController -> LabUI: 201 Created
+LabUI -> LabUser: success message
+@enduml

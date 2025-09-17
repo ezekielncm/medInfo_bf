@@ -1,0 +1,627 @@
+Parfait — tu veux la vue *structurelle* et *comportementale* la plus complète possible, et la logique métier revue en profondeur. Je te fournis :
+
+1. Diagrammes UML complets en **PlantUML** (tu pourras les coller dans un renderer PlantUML / VSCode plugin / [https://www.plantuml.com/plantuml](https://www.plantuml.com/plantuml)).
+2. Explications techniques et mapping direct vers l’implémentation Laravel (modèles, services, controllers, policies, events, jobs).
+3. Logique métier détaillée (règles, validations, droit d’accès, flows métier, audit, gestion offline / conflits, sécurité, retention).
+
+Je vais être précis et technique — pas de bavardage inutile.
+
+---
+
+## 1) Diagrammes UML (PlantUML) — copie/colle et génère
+
+### 1.1 Use Case (Cas d’utilisation)
+
+```plantuml
+@startuml UseCases_MedInfo
+left to right direction
+actor "Patient" as Patient
+actor "Doctor" as Doctor
+actor "Lab" as Lab
+actor "Admin" as Admin
+actor "Public" as Public
+rectangle "MedInfo System" {
+  Patient -- (Register / Login)
+  Patient -- (View own medical record)
+  Patient -- (View lab results)
+  Patient -- (Request password reset)
+  Doctor -- (Login)
+  Doctor -- (View assigned patients)
+  Doctor -- (Create Consultation)
+  Doctor -- (Add Medical Record / Observation)
+  Doctor -- (Create Prescription)
+  Doctor -- (View lab results)
+  Lab -- (Upload Lab Result)
+  Admin -- (Manage users)
+  Admin -- (View logs & stats)
+  Admin -- (Assign doctor to patient)
+  Public -- (View public pages)
+  (API client/mobile) as API
+  API -- (Sync offline data)
+}
+@enduml
+```
+
+---
+
+### 1.2 Class Diagram (Domain + Services)
+
+```plantuml
+@startuml Class_MedInfo
+' Domain Entities
+class User {
+  +id: int
+  +name: string
+  +email: string
+  +password_hash: string
+  +created_at: datetime
+  +updated_at: datetime
+  +roles(): Collection
+  +assignRole(roleName: string)
+  +hasRole(roleName: string): bool
+}
+
+class Patient {
+  +id: int
+  +user_id: int
+  +national_id: string
+  +dob: date
+  +address: string
+  +phone: string
+  +created_at: datetime
+  +updated_at: datetime
+  +user(): User
+  +doctors(): Collection
+}
+
+class Doctor {
+  +id: int
+  +user_id: int
+  +specialty: string
+  +user(): User
+  +patients(): Collection
+}
+
+class Consultation {
+  +id: int
+  +patient_id: int
+  +doctor_id: int
+  +date: datetime
+  +reason: string
+  +diagnosis: text
+  +prescriptions(): Collection
+}
+
+class Prescription {
+  +id: int
+  +consultation_id: int
+  +medicine: string
+  +dosage: string
+  +duration: string
+  +notes: text
+}
+
+class MedicalRecord {
+  +id: int
+  +patient_id: int
+  +doctor_id: int
+  +type: string
+  +description: text
+  +created_at: datetime
+}
+
+class LabResult {
+  +id: int
+  +patient_id: int
+  +performed_by: string
+  +test_name: string
+  +result: text
+  +result_date: datetime
+}
+
+class AuditLog {
+  +id: int
+  +user_id: int
+  +action: string
+  +details: json
+  +ip_address: string
+  +user_agent: string
+  +http_status: int
+  +created_at: datetime
+}
+
+class Attachment {
+  +id: int
+  +model_type: string
+  +model_id: int
+  +path: string
+  +mime: string
+  +size: int
+  +uploaded_by: int
+}
+
+' Relations
+User "1" <|-- "0..1" Patient : has
+User "1" <|-- "0..1" Doctor : has
+Patient "0..*" -- "0..*" User : doctors <<doctor_patient pivot>>
+Consultation "1" -> "1" Patient
+Consultation "1" -> "1" User : doctor
+Consultation "1" -- "0..*" Prescription
+MedicalRecord "1" -> "1" Patient
+MedicalRecord "1" -> "0..1" User : doctor
+LabResult "1" -> "1" Patient
+AuditLog "0..*" -> "0..1" User
+
+' Services (not domain model but logical)
+class AuthService {
+  +login(email,password): Token|false
+  +logout(user): void
+  +register(data): User
+  +issueJwt(user): string
+  +passwordResetRequest(email): void
+  +passwordResetConfirm(token,newPassword): bool
+}
+
+class PatientService {
+  +createPatient(data): Patient
+  +assignDoctor(patientId,doctorId): bool
+  +search(query,filters): Collection
+}
+
+class MedicalRecordService {
+  +addRecord(patientId,doctorId,type,description): MedicalRecord
+  +getRecords(patientId,filters): Collection
+}
+
+class LabResultService {
+  +uploadResult(patientId,data): LabResult
+  +getResults(patientId): Collection
+}
+
+class LogService {
+  +record(action, details, userId=null, httpStatus=null): void
+  +query(filters): Collection
+}
+
+AuthService ..> User
+PatientService ..> Patient
+MedicalRecordService ..> MedicalRecord
+LabResultService ..> LabResult
+LogService ..> AuditLog
+
+@enduml
+```
+
+---
+
+### 1.3 Sequence Diagram — Login Successful
+
+```plantuml
+@startuml Seq_Login
+actor User
+participant "Web Client / SPA" as Client
+participant "AuthController" as AuthCtrl
+participant "AuthService" as AuthSvc
+participant "User Model / DB" as DB
+participant "AuditLog" as Log
+
+User -> Client: submit credentials (email + password)
+Client -> AuthCtrl: POST /login (email,password)
+AuthCtrl -> AuthSvc: AuthService::login(email,password)
+AuthSvc -> DB: SELECT user WHERE email
+DB --> AuthSvc: user row
+AuthSvc -> AuthSvc: verify password (password_verify)
+AuthSvc --> AuthCtrl: success + user
+AuthCtrl -> Log: AuditLog::create(action=login_success, details)
+AuthCtrl -> Client: HTTP 302 /dashboard + set session cookie
+Client -> User: redirect to /dashboard
+@enduml
+```
+
+---
+
+### 1.4 Sequence Diagram — Doctor creates a Consultation + Prescription
+
+```plantuml
+@startuml Seq_CreateConsultation
+actor Doctor
+participant "Doctor UI" as UI
+participant "ConsultationController" as CCtrl
+participant "ConsultationService" as CServ
+participant "Consultation Model / DB" as CDB
+participant "Prescription Model / DB" as PDB
+participant "AuditLog" as Log
+
+Doctor -> UI: Fill consult form (patient_id, reason, diagnosis)
+UI -> CCtrl: POST /api/v1/consultations
+CCtrl -> CServ: createConsultation(data, doctor_id)
+CServ -> CDB: INSERT consultation ...
+CDB --> CServ: consultation.id
+alt with prescriptions
+  loop for each prescription
+    CServ -> PDB: INSERT prescription (consultation_id, medicine, dosage...)
+  end
+end
+CServ -> Log: record(action=consultation_created, details={consultation_id,...}, user_id=doctor)
+CServ --> CCtrl: consultation resource
+CCtrl -> UI: 201 Created + body
+UI -> Doctor: show success
+@enduml
+```
+
+---
+
+### 1.5 Sequence Diagram — Lab uploads result
+
+```plantuml
+@startuml Seq_LabUpload
+actor LabUser
+participant LabUI
+participant LabController
+participant LabService
+participant LabDB
+participant NotificationService
+participant AuditLog
+
+LabUser -> LabUI: Upload new lab result (patient_id, test_name, result)
+LabUI -> LabController: POST /api/v1/patients/{id}/lab_results
+LabController -> LabService: createLabResult(...)
+LabService -> LabDB: INSERT lab_results ...
+LabService -> NotificationService: notify(patient, doctor)
+LabService -> AuditLog: record("lab_result_uploaded", details)
+LabController -> LabUI: 201 Created
+LabUI -> LabUser: success message
+@enduml
+```
+
+---
+
+### 1.6 Sequence Diagram — Offline Sync with Conflict (client -> /api/v1/sync)
+
+```plantuml
+@startuml Seq_OfflineSync
+actor MobileClient
+participant SyncController
+participant SyncService
+participant DB
+participant AuditLog
+
+MobileClient -> SyncController: POST /api/v1/sync {batch:[{type:'consultation', client_uuid, payload, client_ts},...]}
+SyncController -> SyncService: processBatch(batch, user_id)
+alt for each item
+  SyncService -> DB: check existing by client_uuid or matching server timestamp
+  alt no conflict
+    DB -> DB: INSERT / UPDATE
+    SyncService -> AuditLog: record('sync_item_created', details)
+  else conflict detected
+    DB --> SyncService: server_version
+    SyncService -> SyncController: addConflict(item, server_version)
+  end
+end
+SyncService --> SyncController: {accepted:[...], conflicts:[{item,server_version}]}
+SyncController -> MobileClient: 200 OK with accepted + conflicts (409 in case critical)
+@enduml
+```
+
+---
+
+### 1.7 Activity Diagram — Password Reset Flow
+
+```plantuml
+@startuml Activity_PasswordReset
+start
+:User requests "forgot password";
+:POST /password/forgot with email;
+if (email exists?) then (yes)
+  :generate token; store in password_resets with expiry;
+  :send email with reset link;
+else (no)
+  :send generic email "if account exists" (avoid enumeration);
+endif
+stop
+@enduml
+```
+
+---
+
+### 1.8 Component Diagram (high level)
+
+```plantuml
+@startuml Component_MedInfo
+package "Frontend" {
+  [Public Web UI] 
+  [Admin UI]
+  [Doctor UI]
+  [Patient Mobile App]
+}
+
+package "Backend (Laravel App)" {
+  [API Controllers]
+  [Services]
+  [Jobs/Workers]
+  [Auth (Jetstream/Sanctum)]
+  [Policies]
+  [Audit Logging]
+}
+
+package "Infrastructure" {
+  [MySQL/MariaDB]
+  [Redis]
+  [S3/MinIO]
+  [SMTP Provider]
+  [Monitoring (Prometheus/Grafana)]
+  [Sentry]
+}
+
+[Public Web UI] --> [API Controllers]
+[Admin UI] --> [API Controllers]
+[Doctor UI] --> [API Controllers]
+[Patient Mobile App] --> [API Controllers]
+
+[API Controllers] --> [Services]
+[Services] --> [MySQL/MariaDB]
+[Services] --> [Redis]
+[Services] --> [S3/MinIO]
+[Services] --> [SMTP Provider]
+[Jobs/Workers] --> [S3/MinIO]
+[Jobs/Workers] --> [SMTP Provider]
+[API Controllers] --> [Audit Logging]
+[Audit Logging] --> [MySQL/MariaDB]
+
+@enduml
+```
+
+---
+
+### 1.9 Deployment Diagram
+
+```plantuml
+@startuml Deployment_MedInfo
+node "Load Balancer" {
+  node "Web Node 1" {
+    [Nginx]
+    [php-fpm (Laravel)]
+  }
+  node "Web Node 2" {
+    [Nginx]
+    [php-fpm (Laravel)]
+  }
+}
+node "Workers" {
+  [Queue Worker]
+}
+node "Data" {
+  [MySQL Primary]
+  [MySQL Replica]
+  [Redis]
+  [S3/MinIO]
+}
+node "Observability" {
+  [Prometheus]
+  [Grafana]
+  [Sentry]
+}
+"Web Node 1" --> "MySQL Primary" : SQL
+"Web Node 2" --> "MySQL Primary" : SQL
+"Workers" --> "MySQL Primary" : SQL
+"Web Node 1" --> Redis
+"Workers" --> Redis
+"Web Node 1" --> S3/MinIO
+Observability --> Web Node 1
+@enduml
+```
+
+---
+
+## 2) Logique métier complète et détaillée (précise, étape par étape)
+
+Je livre la logique métier en sections : règles, validations, autorisations, événementiel, erreurs, idempotence, offline, rétention, monitoring.
+
+### 2.1 Règles générales (système)
+
+* Toutes les opérations modifiant l’état persistent **dans une transaction DB** quand elles touchent plusieurs tables (ex : création user + patient, consultation + prescriptions).
+* Toutes les opérations sensibles **émettent un audit log** (AuditLog::create) contenant `user_id`, `action`, `details` JSON, `ip`, `user_agent`, HTTP status.
+* Toutes les entrées utilisateur passent par **FormRequest** (validation) côté Laravel.
+* Les champs sensibles (diagnosis, notes) sont chiffrés field-level si requis : `Crypt::encryptString()` lors de save, `Crypt::decryptString()` à la lecture (service central).
+
+### 2.2 Authentification & authorization
+
+* Web: Jetstream session-based with CSRF.
+* API: Sanctum tokens (or Passport if OAuth required).
+* RBAC: Spatie `roles` + `permissions` (use roles primarily: admin, doctor, patient, laborantin, pharmacist).
+* Policies: `PatientPolicy`, `MedicalRecordPolicy`, `ConsultationPolicy`. Use `authorize()` in controllers.
+* Access rules (examples):
+
+  * `PatientPolicy@view` → `true` if `auth()->id() == patient.user_id` OR `auth()->hasRole('admin')` OR `auth()` user is doctor assigned to that patient.
+  * `MedicalRecordPolicy@create` → only doctors assigned OR admins.
+  * `ConsultationPolicy@create` → only doctors OR admin.
+
+### 2.3 CRUD : Patients
+
+* Create:
+
+  * Admin or public registration flow with email verification.
+  * Validate `national_id` unique; generate `user` record; create `patient` record linked to `user`.
+  * Assign default doctor if supplied or leave unassigned.
+  * Audit `patient_created`.
+* Update:
+
+  * Patient can update non-medical fields (address, phone).
+  * Doctor/admin can update medical-affecting fields only via proper endpoints; changes logged.
+* Delete:
+
+  * Admin only; cascade delete patient records or mark as `archived` depending retention policy. Prefer soft deletes? Use softDeletes for safety.
+
+### 2.4 Consultations & Prescriptions
+
+* Doctor creates consultation:
+
+  * Validate patient exists and doctor assigned (or admin).
+  * Create consultation record in a transaction.
+  * Create any prescriptions with consultation\_id.
+  * Emit audit `consultation_created` and notify patient (email/SMS optionally).
+* Update:
+
+  * Doctor can update diagnosis within a window (e.g., 24h) OR admin can override with reason logged. Prefer immutability: keep original and store an `edited_by`/`edited_at` in audit.
+
+### 2.5 Medical Records (observations)
+
+* Each observation is immutable; updates produce a new record referencing `replaces_record_id` optional.
+* Record types: `note`, `diagnosis`, `referral`, `allergy`. Strong typing reduces ambiguity.
+
+### 2.6 Lab Results
+
+* Lab user uploads result via API with token scoped to lab role.
+* On upload:
+
+  * Validate patient exists.
+  * Create LabResult record.
+  * Trigger notification to assigned doctor and patient (if consented).
+  * Audit `lab_result_uploaded`.
+* Validation: ensure attachments scanned (ClamAV) and stored in S3; store path in `attachments` if files attached.
+
+### 2.7 Audit & Logs
+
+* Mandatory log actions:
+
+  * Auth: `login_success`, `login_failed`, `logout`.
+  * Read: `record_view` with patient\_id and record\_id. Always log read of medical info.
+  * Write: create/update/delete of patient/consultation/record/prescription/lab\_result.
+  * Admin actions: user\_create, user\_update, user\_delete, role\_change.
+* Query audit logs via Admin UI with filters (user, action, date range, patient\_id inside details JSON).
+
+### 2.8 Offline / Sync logic (PWA / Mobile)
+
+* Client stores operations in a *local queue* with `client_uuid`, `client_ts`, `type`, `payload`.
+* Sync endpoint `/api/v1/sync` accepts batch up to N items. For each:
+
+  * Attempt to find by `client_uuid` to ensure idempotence.
+  * If item not present: try to apply using transactions.
+  * If server-side version changed (e.g., timestamp mismatch) → return conflict for that item with `server_version`.
+  * Conflict resolution:
+
+    * For non-critical data (notes): server wins by default; client receives server\_version with reason.
+    * For critical (consultation creation): return 409 with both versions; client must display merge UI.
+* Ensure `created_by_client: true` flag kept to detect origin.
+
+### 2.9 Data lifecycle and retention
+
+* Medical records: retained indefinitely, archiving policy for >5 years into cold storage (S3 Glacier).
+* Logs: retain in DB for 1 year; export older logs to object storage and purge.
+* Backups: daily full DB dump + binlog replication. Test restores monthly.
+
+### 2.10 Security constraints & hardened rules
+
+* All traffic HTTPS; HSTS enabled.
+* Session cookies `Secure`, `HttpOnly`, `SameSite=Strict`.
+* Rate limiter on auth endpoints: max 5 attempts per minute per IP, progressive lockout.
+* CSP and minimal inline scripts; sanitize and escape outputs.
+* Password policy: min 8, recommend 12; check common passwords using a denylist.
+* Two-Factor Authentication recommended for doctors/admins.
+
+### 2.11 Validation rules (concrete)
+
+* `email` => `required|email:rfc,dns|unique:users,email`.
+* `password` => `required|min:8|confirmed|not_in:common_password_list`.
+* `national_id` => `required|unique:patients,national_id|regex:/^[A-Z0-9\-]+$/`.
+* Medical text fields: length limits; disallow binary payloads.
+
+### 2.12 Events & async processing
+
+* Fire events:
+
+  * `ConsultationCreated` → listeners: `NotifyPatient`, `IndexForSearch`, `AuditListener`.
+  * `LabResultUploaded` → `NotifyDoctor`, `NotifyPatient`, `AuditListener`.
+* Jobs: email sending, PDF generation, virus scanning, export CSV. Use Redis queue workers.
+
+### 2.13 Error handling & monitoring
+
+* Central exception handler sends errors to Sentry with context (user\_id, request\_id).
+* API returns structured JSON error body with `status:error`, `message`, `errors[]`.
+* Use request\_id header (X-Request-ID) propagated to logs and responses.
+
+### 2.14 Transactional boundaries
+
+* Use DB transactions for multi-table operations:
+
+  * Create user + patient + pivot doctors => single transaction.
+  * Create consultation + prescriptions => single transaction.
+* On failure, rollback and log error.
+
+### 2.15 API versioning & backwards compatibility
+
+* Prefix `/api/v1/`. When changing contracts, publish `/api/v2/` and keep v1 until deprecation policy executed.
+
+---
+
+## 3) Mapping UML → Implementation Laravel (concrete files & patterns)
+
+For each UML element, mapping and suggested file locations:
+
+* **User** → `app/Models/User.php` (HasRoles trait), migrations `database/migrations/*_create_users_table.php`.
+* **Patient** → `app/Models/Patient.php`; migration `create_patients_table`.
+* **doctor\_patient pivot** → migration `create_doctor_patient_table` (no model required unless pivot has attributes).
+* **Consultation** → `app/Models/Consultation.php`; controller `app/Http/Controllers/Api/ConsultationsController.php` ; request `StoreConsultationRequest`.
+* **Prescription** → `app/Models/Prescription.php`; `PrescriptionsController` or nested controller.
+* **MedicalRecord** → `app/Models/MedicalRecord.php` ; `MedicalRecordsController` ; `MedicalRecordPolicy`.
+* **LabResult** → `app/Models/LabResult.php`; `LabResultsController` accessible to `role:laborantin` or via API token.
+* **AuditLog** → `app/Models/AuditLog.php` ; `LogService` in `app/Services/LogService.php`. Call `LogService::record(...)` everywhere.
+* **AuthService** → `app/Services/AuthService.php` for JWT issuance (if used) and helpers. Use Jetstream/Sanctum for sessions.
+* **SyncService** → `app/Services/SyncService.php` to implement offline batch logic, idempotence, conflict detection.
+* **Events** → `app/Events/ConsultationCreated.php` + listeners in `EventServiceProvider`.
+* **Jobs** → `app/Jobs/SendEmailNotification.php`, `ScanAttachmentJob.php`.
+
+---
+
+## 4) Artefacts livrables (immédiats) et priorisation
+
+**Deliverable 1 (immediate)**
+
+* PlantUML files (ci-dessus).
+* Migrations skeleton (you already asked earlier; generate next).
+* Models skeleton (done earlier).
+* Policies stubs (PatientPolicy, MedicalRecordPolicy).
+* Base `Controller` with `success/error/audit`.
+
+**Deliverable 2 (next sprint)**
+
+* Implement Auth flows (Jetstream already).
+* Implement Patients API + Policies + Unit tests.
+* Implement Audit logging global middleware and Login listeners.
+
+**Deliverable 3 (sprint following)**
+
+* Consultations + Prescriptions + MedicalRecords + LabResults.
+* Notifications + Jobs + Queue workers.
+* Offline Sync API and mobile sync spec.
+
+**Deliverable 4 (pre-prod)**
+
+* Security hardening, backup strategy test, monitoring (Sentry + Prometheus + Grafana), performance tuning.
+
+---
+
+## 5) Notes techniques finales — recommandations strictes
+
+1. **Use soft deletes** for patient-related data initially? No — for medical records prefer immutability; use `archived` flag + separate archival process.
+2. **Always audit reads** of medical records. It is a legal requirement in many jurisdictions. Implement `RecordView` audit action in middleware or policy.
+3. **RBAC via Spatie**: manage roles and granular permissions; seed default roles early.
+4. **Field encryption**: identify PII and PHI; decide which fields are encrypted at rest. Use `Laravel encryption` but plan for KMS if scaling.
+5. **Avoid business logic in controllers**. Use Services. Controllers orchestrate only. Unit test services.
+6. **Design sync protocol with client dev early**. Client must include `client_uuid`, `client_ts`, and optional `base_version` for conflict resolution.
+
+---
+
+## 6) Prochaine étape concrète (je fournis tout de suite si tu veux)
+
+Choisis une des options suivantes et je fournis les fichiers prêts à coller :
+
+A. Générer les **migrations Laravel** complètes (avec FK, indexes, softDeletes/unique constraints) pour tout le modèle (patients, doctor\_patient, consultations, prescriptions, medical\_records, lab\_results, audit\_logs, attachments, password\_resets).
+
+B. Générer les **Policies** (`PatientPolicy`, `MedicalRecordPolicy`, `ConsultationPolicy`) complètes avec règles métier codées.
+
+C. Générer l’**implémentation du SyncService** + controller `/api/v1/sync` (code Laravel, tests basiques).
+
+D. Générer les **Listeners** for auth events + global middleware logger + seeders for roles and admin user.
+
+Dis ce que tu veux en **priorité** (A / B / C / D) et je te fournis immédiatement les fichiers correspondants prêts à coller dans ton projet Laravel.

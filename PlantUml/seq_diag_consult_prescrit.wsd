@@ -1,0 +1,24 @@
+@startuml Seq_CreateConsultation
+actor Doctor
+participant "Doctor UI" as UI
+participant "ConsultationController" as CCtrl
+participant "ConsultationService" as CServ
+participant "Consultation Model / DB" as CDB
+participant "Prescription Model / DB" as PDB
+participant "AuditLog" as Log
+
+Doctor -> UI: Fill consult form (patient_id, reason, diagnosis)
+UI -> CCtrl: POST /api/v1/consultations
+CCtrl -> CServ: createConsultation(data, doctor_id)
+CServ -> CDB: INSERT consultation ...
+CDB --> CServ: consultation.id
+alt with prescriptions
+  loop for each prescription
+    CServ -> PDB: INSERT prescription (consultation_id, medicine, dosage...)
+  end
+end
+CServ -> Log: record(action=consultation_created, details={consultation_id,...}, user_id=doctor)
+CServ --> CCtrl: consultation resource
+CCtrl -> UI: 201 Created + body
+UI -> Doctor: show success
+@enduml

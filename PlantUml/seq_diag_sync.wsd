@@ -1,0 +1,22 @@
+@startuml Seq_OfflineSync
+actor MobileClient
+participant SyncController
+participant SyncService
+participant DB
+participant AuditLog
+
+MobileClient -> SyncController: POST /api/v1/sync {batch:[{type:'consultation', client_uuid, payload, client_ts},...]}
+SyncController -> SyncService: processBatch(batch, user_id)
+alt for each item
+  SyncService -> DB: check existing by client_uuid or matching server timestamp
+  alt no conflict
+    DB -> DB: INSERT / UPDATE
+    SyncService -> AuditLog: record('sync_item_created', details)
+  else conflict detected
+    DB --> SyncService: server_version
+    SyncService -> SyncController: addConflict(item, server_version)
+  end
+end
+SyncService --> SyncController: {accepted:[...], conflicts:[{item,server_version}]}
+SyncController -> MobileClient: 200 OK with accepted + conflicts (409 in case critical)
+@enduml

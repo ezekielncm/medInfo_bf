@@ -1,0 +1,19 @@
+@startuml Seq_Login
+actor User
+participant "Web Client / SPA" as Client
+participant "AuthController" as AuthCtrl
+participant "AuthService" as AuthSvc
+participant "User Model / DB" as DB
+participant "AuditLog" as Log
+
+User -> Client: submit credentials (email + password)
+Client -> AuthCtrl: POST /login (email,password)
+AuthCtrl -> AuthSvc: AuthService::login(email,password)
+AuthSvc -> DB: SELECT user WHERE email
+DB --> AuthSvc: user row
+AuthSvc -> AuthSvc: verify password (password_verify)
+AuthSvc --> AuthCtrl: success + user
+AuthCtrl -> Log: AuditLog::create(action=login_success, details)
+AuthCtrl -> Client: HTTP 302 /dashboard + set session cookie
+Client -> User: redirect to /dashboard
+@enduml

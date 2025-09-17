@@ -1,0 +1,12 @@
+@startuml Activity_PasswordReset
+start
+:User requests "forgot password";
+:POST /password/forgot with email;
+if (email exists?) then (yes)
+  :generate token; store in password_resets with expiry;
+  :send email with reset link;
+else (no)
+  :send generic email "if account exists" (avoid enumeration);
+endif
+stop
+@enduml

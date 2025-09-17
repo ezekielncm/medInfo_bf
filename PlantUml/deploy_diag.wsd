@@ -1,0 +1,33 @@
+@startuml Deployment_MedInfo
+node "Load Balancer" {
+  node "Web Node 1" {
+    [Nginx]
+    [php-fpm (Laravel)]
+  }
+  node "Web Node 2" {
+    [Nginx]
+    [php-fpm (Laravel)]
+  }
+}
+node "Workers" {
+  [Queue Worker]
+}
+node "Data" {
+  [MySQL Primary]
+  [MySQL Replica]
+  [Redis]
+  [S3/MinIO]
+}
+node "Observability" {
+  [Prometheus]
+  [Grafana]
+  [Sentry]
+}
+"Web Node 1" --> "MySQL Primary" : SQL
+"Web Node 2" --> "MySQL Primary" : SQL
+"Workers" --> "MySQL Primary" : SQL
+"Web Node 1" --> Redis
+"Workers" --> Redis
+"Web Node 1" --> S3/MinIO
+Observability --> Web Node 1
+@enduml

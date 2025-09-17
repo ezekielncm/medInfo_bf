@@ -1,0 +1,143 @@
+@startuml Class_MedInfo
+' Domain Entities
+class User {
+  +id: int
+  +name: string
+  +email: string
+  +password_hash: string
+  +created_at: datetime
+  +updated_at: datetime
+  +roles(): Collection
+  +assignRole(roleName: string)
+  +hasRole(roleName: string): bool
+}
+
+class Patient {
+  +id: int
+  +user_id: int
+  +national_id: string
+  +dob: date
+  +address: string
+  +phone: string
+  +created_at: datetime
+  +updated_at: datetime
+  +user(): User
+  +doctors(): Collection
+}
+
+class Doctor {
+  +id: int
+  +user_id: int
+  +specialty: string
+  +user(): User
+  +patients(): Collection
+}
+
+class Consultation {
+  +id: int
+  +patient_id: int
+  +doctor_id: int
+  +date: datetime
+  +reason: string
+  +diagnosis: text
+  +prescriptions(): Collection
+}
+
+class Prescription {
+  +id: int
+  +consultation_id: int
+  +medicine: string
+  +dosage: string
+  +duration: string
+  +notes: text
+}
+
+class MedicalRecord {
+  +id: int
+  +patient_id: int
+  +doctor_id: int
+  +type: string
+  +description: text
+  +created_at: datetime
+}
+
+class LabResult {
+  +id: int
+  +patient_id: int
+  +performed_by: string
+  +test_name: string
+  +result: text
+  +result_date: datetime
+}
+
+class AuditLog {
+  +id: int
+  +user_id: int
+  +action: string
+  +details: json
+  +ip_address: string
+  +user_agent: string
+  +http_status: int
+  +created_at: datetime
+}
+
+class Attachment {
+  +id: int
+  +model_type: string
+  +model_id: int
+  +path: string
+  +mime: string
+  +size: int
+  +uploaded_by: int
+}
+
+' Relations
+User "1" <|-- "0..1" Patient : has
+User "1" <|-- "0..1" Doctor : has
+Patient "0..*" -- "0..*" User : doctors <<doctor_patient pivot>>
+Consultation "1" -> "1" Patient
+Consultation "1" -> "1" User : doctor
+Consultation "1" -- "0..*" Prescription
+MedicalRecord "1" -> "1" Patient
+MedicalRecord "1" -> "0..1" User : doctor
+LabResult "1" -> "1" Patient
+AuditLog "0..*" -> "0..1" User
+
+' Services (not domain model but logical)
+class AuthService {
+  +login(email,password): Token|false
+  +logout(user): void
+  +register(data): User
+  +issueJwt(user): string
+  +passwordResetRequest(email): void
+  +passwordResetConfirm(token,newPassword): bool
+}
+
+class PatientService {
+  +createPatient(data): Patient
+  +assignDoctor(patientId,doctorId): bool
+  +search(query,filters): Collection
+}
+
+class MedicalRecordService {
+  +addRecord(patientId,doctorId,type,description): MedicalRecord
+  +getRecords(patientId,filters): Collection
+}
+
+class LabResultService {
+  +uploadResult(patientId,data): LabResult
+  +getResults(patientId): Collection
+}
+
+class LogService {
+  +record(action, details, userId=null, httpStatus=null): void
+  +query(filters): Collection
+}
+
+AuthService ..> User
+PatientService ..> Patient
+MedicalRecordService ..> MedicalRecord
+LabResultService ..> LabResult
+LogService ..> AuditLog
+
+@enduml

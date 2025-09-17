@@ -1,0 +1,27 @@
+@startuml UseCases_MedInfo
+left to right direction
+actor "Patient" as Patient
+actor "Doctor" as Doctor
+actor "Lab" as Lab
+actor "Admin" as Admin
+actor "Public" as Public
+rectangle "MedInfo System" {
+  Patient -- (Register / Login)
+  Patient -- (View own medical record)
+  Patient -- (View lab results)
+  Patient -- (Request password reset)
+  Doctor -- (Login)
+  Doctor -- (View assigned patients)
+  Doctor -- (Create Consultation)
+  Doctor -- (Add Medical Record / Observation)
+  Doctor -- (Create Prescription)
+  Doctor -- (View lab results)
+  Lab -- (Upload Lab Result)
+  Admin -- (Manage users)
+  Admin -- (View logs & stats)
+  Admin -- (Assign doctor to patient)
+  Public -- (View public pages)
+  (API client/mobile) as API
+  API -- (Sync offline data)
+}
+@enduml

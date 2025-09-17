@@ -1,0 +1,34 @@
+Bonjour ! C'est une excellente question. Pour qu'un agent comme ChatGPT soit le plus performant possible sur votre projet "MedInfo", il faut lui donner le contexte architectural et fonctionnel.
+
+Vous avez déjà commencé parfaitement en fournissant le fichier `openapi.yaml`. C'est l'une des pièces les plus importantes pour tout ce qui touche à l'API.
+
+Voici une liste des fichiers les plus utiles à fournir, classés par ordre de priorité :
+
+### Les 5 fichiers les plus importants :
+
+1.  **`composer.json`** : C'est la carte d'identité de votre application Laravel. Il permet à l'agent de connaître instantanément toutes les dépendances back-end (comme `laravel/jetstream`, `spatie/laravel-permission`), les versions, et les scripts utilisés.
+2.  **`package.json`** : L'équivalent du `composer.json` pour le front-end. Il liste les dépendances JavaScript (Vue, React, Livewire, etc.) et les scripts de build (`npm run build`).
+3.  **Le fichier de routes principal (`routes/api.php` ou `routes/web.php`)** : Ce fichier est essentiel car il montre comment les URL sont mappées aux contrôleurs et à la logique métier. C'est le "plan" de votre application.
+4.  **Le cahier des charges / le document de spécifications techniques** : Le document que vous avez détaillé précédemment est une mine d'or. Il contient la logique métier, les rôles, le schéma de données, etc. C'est le contexte le plus riche que vous puissiez fournir.
+5.  **Un export du schéma de la base de données** ou **les fichiers de migration** (`database/migrations/*.php`) : Cela permet à l'agent de comprendre parfaitement la structure des données, les relations entre les tables, les types de colonnes et les contraintes.
+
+### Fichiers secondaires très utiles :
+
+* **`.env.example`** : **Très important**. Ne donnez JAMAIS votre fichier `.env` qui contient vos secrets. Le fichier `.env.example` liste toutes les variables d'environnement nécessaires pour faire tourner le projet, ce qui est crucial pour comprendre sa configuration.
+* **Les Modèles Eloquent principaux** (ex: `app/Models/User.php`, `app/Models/Patient.php`, `app/Models/Consultation.php`) : Ces fichiers montrent les relations (`belongsTo`, `hasMany`), les champs `$fillable`, les casts, etc.
+* **Un contrôleur complexe typique de votre application** (ex: `app/Http/Controllers/Api/PatientsController.php`) : Fournir un exemple de contrôleur permet de voir comment vous structurez votre logique, utilisez les `FormRequest`, les `Policies` et les `API Resources`.
+* **Votre fichier de CI/CD** (ex: `.github/workflows/ci.yml`) : Utile si vous avez des questions sur le déploiement, les tests automatisés ou l'intégration continue.
+* **`app/Providers/AuthServiceProvider.php`** : Ce fichier est important pour voir comment vos `Policies` sont enregistrées et comprendre les règles d'autorisation.
+
+### En résumé :
+
+Pour une efficacité maximale, je vous recommande de fournir un zip contenant :
+
+1.  `cahier-des-charges.md` (le document que vous avez écrit)
+2.  `composer.json`
+3.  `package.json`
+4.  `openapi.yaml` (vous l'avez déjà fait)
+5.  Le dossier `database/migrations/`
+6.  Le dossier `routes/`
+
+Avec ces éléments, l'agent aura une vision à 360° de votre projet, de ses objectifs métier à son implémentation technique.

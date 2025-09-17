@@ -1,0 +1,42 @@
+@startuml Component_MedInfo
+package "Frontend" {
+  [Public Web UI] 
+  [Admin UI]
+  [Doctor UI]
+  [Patient Mobile App]
+}
+
+package "Backend (Laravel App)" {
+  [API Controllers]
+  [Services]
+  [Jobs/Workers]
+  [Auth (Jetstream/Sanctum)]
+  [Policies]
+  [Audit Logging]
+}
+
+package "Infrastructure" {
+  [MySQL/MariaDB]
+  [Redis]
+  [S3/MinIO]
+  [SMTP Provider]
+  [Monitoring (Prometheus/Grafana)]
+  [Sentry]
+}
+
+[Public Web UI] --> [API Controllers]
+[Admin UI] --> [API Controllers]
+[Doctor UI] --> [API Controllers]
+[Patient Mobile App] --> [API Controllers]
+
+[API Controllers] --> [Services]
+[Services] --> [MySQL/MariaDB]
+[Services] --> [Redis]
+[Services] --> [S3/MinIO]
+[Services] --> [SMTP Provider]
+[Jobs/Workers] --> [S3/MinIO]
+[Jobs/Workers] --> [SMTP Provider]
+[API Controllers] --> [Audit Logging]
+[Audit Logging] --> [MySQL/MariaDB]
+
+@enduml
