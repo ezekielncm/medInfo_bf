@@ -1,0 +1,214 @@
+openapi: 3.1.0
+info:
+  title: MedInfo Burkina API
+  description: API REST pour la gestion des dossiers médicaux (patients, médecins, consultations, logs).
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api
+    description: Local dev
+  - url: https://medinfo.example.com/api
+    description: Production
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        roles: { type: array, items: { type: string } }
+    Patient:
+      type: object
+      properties:
+        id: { type: integer }
+        national_id: { type: string }
+        dob: { type: string, format: date }
+        address: { type: string }
+        phone: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    Consultation:
+      type: object
+      properties:
+        id: { type: integer }
+        patient_id: { type: integer }
+        doctor_id: { type: integer }
+        reason: { type: string }
+        diagnosis: { type: string }
+        created_at: { type: string, format: date-time }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        action: { type: string }
+        details: { type: object }
+        created_at: { type: string, format: date-time }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /patients:
+    get:
+      summary: Liste des patients
+      tags: [Patients]
+      responses:
+        '200':
+          description: Liste paginée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Patient' }
+    post:
+      summary: Créer un patient
+      tags: [Patients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, national_id]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                national_id: { type: string }
+      responses:
+        '201':
+          description: Patient créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Patient' }
+
+  /patients/{id}:
+    get:
+      summary: Détails d’un patient
+      tags: [Patients]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Patient trouvé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Patient' }
+        '404':
+          description: Patient introuvable
+
+  /doctors:
+    get:
+      summary: Liste des médecins
+      tags: [Doctors]
+      responses:
+        '200':
+          description: Liste paginée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+
+  /doctors/{doctor}/assign-patient/{patient}:
+    post:
+      summary: Assigner un patient à un médecin
+      tags: [Doctors]
+      parameters:
+        - name: doctor
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: patient
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Patient assigné
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /consultations:
+    post:
+      summary: Créer une consultation
+      tags: [Consultations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patient_id]
+              properties:
+                patient_id: { type: integer }
+                reason: { type: string }
+                diagnosis: { type: string }
+      responses:
+        '201':
+          description: Consultation créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Consultation' }
+
+  /consultations/{id}:
+    get:
+      summary: Détails d’une consultation
+      tags: [Consultations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Consultation trouvée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Consultation' }
+
+  /logs:
+    get:
+      summary: Liste des logs (admin seulement)
+      tags: [Logs]
+      parameters:
+        - name: action
+          in: query
+          required: false
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Liste paginée des logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
